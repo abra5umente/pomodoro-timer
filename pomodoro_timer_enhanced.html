@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pomodoro Timer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #222 0%, #111 100%);
+      color: #fff;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 3rem;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      min-width: 400px;
+    }
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 1.5rem;
+      font-weight: 300;
+    }
+    .timer-display {
+      font-size: 4rem;
+      font-family: 'Courier New', monospace;
+      margin: 1.5rem 0;
+    }
+    .controls button, .settings select, .settings input {
+      margin: 0.5em;
+      padding: 0.8em 1.5em;
+      font-size: 1em;
+      border: none;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+    }
+    .controls button {
+      background: #4caf50;
+      color: white;
+    }
+    .controls button:hover { background: #45a049; }
+    .settings {
+      margin-top: 2rem;
+      text-align: left;
+    }
+    .settings label { display: block; margin: 0.75rem 0; }
+    .pomodoro-counter {
+      margin-top: 2rem;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    .pomodoro-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.3);
+      transition: all 0.3s ease;
+    }
+    .pomodoro-dot.completed {
+      background: #4caf50;
+      transform: scale(1.2);
+    }
+    .message {
+      margin-top: 1rem;
+      color: #4caf50;
+      font-weight: bold;
+    }
+    .session-log {
+      margin-top: 2rem;
+      padding-top: 2rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+      text-align: left;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .log-entry {
+      padding: 0.5rem 0;
+      opacity: 0.8;
+      font-size: 0.9rem;
+    }
+    .break-reminder {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.9);
+      backdrop-filter: blur(10px);
+      padding: 2rem;
+      border-radius: 15px;
+      text-align: center;
+      z-index: 1000;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      display: none;
+    }
+    .break-reminder h2 {
+      color: #4caf50;
+      margin-bottom: 1rem;
+    }
+    #breakTimerDisplay {
+      font-size: 2rem;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Pomodoro Timer</h1>
+    <div class="timer-display" id="timer">25:00</div>
+    <div class="controls">
+      <button id="startBtn">Start</button>
+      <button id="stopBtn">Stop</button>
+      <button id="resetBtn">Reset</button>
+      <button id="breakBtn">Take a Break Now</button>
+    </div>
+    <div class="settings">
+      <label>Break Duration:
+        <select id="breakLength">
+          <option value="5">5 min</option>
+          <option value="10">10 min</option>
+          <option value="15">15 min</option>
+          <option value="20">20 min</option>
+        </select>
+      </label>
+      <label>Long Break Threshold:
+        <input type="number" id="pomodoroThreshold" min="1" value="4" />
+      </label>
+      <label>Long Break Duration:
+        <input type="number" id="longBreakDuration" min="1" value="60" /> minutes
+      </label>
+    </div>
+    <div class="pomodoro-counter">
+      Pomodoros:
+      <div class="pomodoro-dot" id="dot1"></div>
+      <div class="pomodoro-dot" id="dot2"></div>
+      <div class="pomodoro-dot" id="dot3"></div>
+      <div class="pomodoro-dot" id="dot4"></div>
+    </div>
+    <div class="message" id="message"></div>
+    <div class="session-log">
+      <h3>Session Log</h3>
+      <button id="exportLogBtn" style="margin: 0.5em; padding: 0.5em 1em; font-size: 0.9em; border-radius: 5px; background: #4caf50; color: white; border: none; cursor: pointer;">Copy to Clipboard</button>
+      <div id="logEntries"></div>
+    </div>
+  </div>
+
+  <div class="break-reminder" id="breakReminder">
+    <h2>⏰ Time for a break!</h2>
+    <div id="breakTimerDisplay">00:00</div>
+    <div>
+      <button onclick="dismissReminder()">Dismiss</button>
+    </div>
+  </div>
+
+  <audio id="breakSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+  <audio id="workSound" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg" preload="auto"></audio>
+
+  <script>
+    function dismissReminder() {
+      const reminder = document.getElementById('breakReminder');
+      if (reminder) {
+        reminder.style.display = 'none';
+        document.getElementById('workSound').play();
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      let duration = 25 * 60;
+      let timer, breakTimer;
+      let pomodoros = 0;
+      let sessionLog = [];
+
+      const timerDisplay = document.getElementById('timer');
+      const messageEl = document.getElementById('message');
+      const breakReminder = document.getElementById('breakReminder');
+      const breakTimerDisplay = document.getElementById('breakTimerDisplay');
+      const breakSound = document.getElementById('breakSound');
+
+      function updateDisplay() {
+        const min = Math.floor(duration / 60).toString().padStart(2, '0');
+        const sec = (duration % 60).toString().padStart(2, '0');
+        timerDisplay.innerText = `${min}:${sec}`;
+      }
+
+      function updatePomodoroDots() {
+        for (let i = 1; i <= 4; i++) {
+          const dot = document.getElementById(`dot${i}`);
+          if (i <= pomodoros % 4 || (pomodoros % 4 === 0 && pomodoros > 0)) {
+            dot.classList.add('completed');
+          } else {
+            dot.classList.remove('completed');
+          }
+        }
+      }
+
+      function startTimer() {
+        if (timer) return;
+        timer = setInterval(() => {
+          if (duration > 0) {
+            duration--;
+            updateDisplay();
+          } else {
+            stopTimer();
+          }
+        }, 1000);
+      }
+
+      function stopTimer() {
+        clearInterval(timer);
+        timer = null;
+        incrementPomodoro();
+      }
+
+      function resetTimer() {
+        clearInterval(timer);
+        timer = null;
+        duration = 25 * 60;
+        updateDisplay();
+      }
+
+      function incrementPomodoro() {
+        pomodoros++;
+        updatePomodoroDots();
+        const threshold = parseInt(document.getElementById('pomodoroThreshold').value);
+        const longBreak = parseInt(document.getElementById('longBreakDuration').value);
+        const shortBreak = parseInt(document.getElementById('breakLength').value);
+
+        if (pomodoros % threshold === 0) {
+          messageEl.innerText = `🎉 Time for a long break! (${longBreak} min)`;
+          showBreakReminder(longBreak);
+          logSession(`Long Break Due! (${longBreak} min)`);
+        } else {
+          messageEl.innerText = `✅ Take a short break! (${shortBreak} min)`;
+          showBreakReminder(shortBreak);
+          logSession(`Short Break (${shortBreak} min)`);
+        }
+        duration = 25 * 60;
+        updateDisplay();
+      }
+
+      function showBreakReminder(minutes) {
+        let seconds = minutes * 60;
+        breakReminder.style.display = 'block';
+        breakTimerDisplay.innerText = formatTime(seconds);
+        clearInterval(breakTimer);
+        breakSound.play();
+        breakTimer = setInterval(() => {
+          seconds--;
+          breakTimerDisplay.innerText = formatTime(seconds);
+          if (seconds <= 0) {
+            clearInterval(breakTimer);
+            dismissReminder();
+          }
+        }, 1000);
+      }
+
+      function takeBreakNow() {
+        incrementPomodoro();
+      }
+
+      function formatTime(sec) {
+        const min = Math.floor(sec / 60).toString().padStart(2, '0');
+        const s = (sec % 60).toString().padStart(2, '0');
+        return `${min}:${s}`;
+      }
+
+      function logSession(breakType) {
+        const timestamp = new Date().toLocaleTimeString();
+        const logText = `${timestamp} - Pomodoro #${pomodoros} (${breakType})`;
+        
+        // Store in memory
+        sessionLog.push(`${new Date().toISOString()} - ${logText}`);
+        
+        // Display log entry
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        entry.innerHTML = `${timestamp} - Pomodoro #${pomodoros} <span style="color:#4caf50">(${breakType})</span>`;
+        document.getElementById('logEntries').prepend(entry);
+      }
+
+      document.getElementById('startBtn').onclick = startTimer;
+      document.getElementById('stopBtn').onclick = stopTimer;
+      document.getElementById('resetBtn').onclick = resetTimer;
+      document.getElementById('breakBtn').onclick = takeBreakNow;
+
+      const exportBtn = document.getElementById('exportLogBtn');
+      if (exportBtn) {
+        exportBtn.onclick = function () {
+          try {
+            let text = 'Pomodoro Session Log:\n';
+            
+            // Use the in-memory log with ISO timestamps
+            if (sessionLog.length > 0) {
+              sessionLog.forEach(entry => {
+                text += entry + '\n';
+              });
+            } else {
+              text += 'No sessions logged yet.\n';
+            }
+
+            // Always use the fallback method to avoid clipboard API issues
+            fallbackCopy(text.trim());
+          } catch (e) {
+            console.error('Error copying log:', e);
+            messageEl.innerText = 'Error copying log: ' + e.message;
+            setTimeout(() => messageEl.innerText = '', 3000);
+          }
+        };
+      }
+
+      function fallbackCopy(text) {
+        try {
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.style.position = 'fixed';
+          textarea.style.left = '-9999px';
+          textarea.style.top = '-9999px';
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textarea);
+          
+          if (successful) {
+            messageEl.innerText = '✅ Session log copied to clipboard!';
+            setTimeout(() => messageEl.innerText = '', 3000);
+          } else {
+            throw new Error('Copy command failed');
+          }
+        } catch (err) {
+          console.error('Fallback copy failed:', err);
+          messageEl.innerText = '❌ Copy failed. Check console for details.';
+          setTimeout(() => messageEl.innerText = '', 5000);
+        }
+      }
+
+      updateDisplay();
+      updatePomodoroDots();
+    });
+  </script>
+</body>
+</html>
